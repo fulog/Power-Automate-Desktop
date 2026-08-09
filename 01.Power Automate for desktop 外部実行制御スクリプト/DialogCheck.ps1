@@ -30,10 +30,12 @@ function Get-PadRegistryValue {
                 Scope      = $Hive.ToString()
                 View       = $View.ToString()
                 ValueName  = $ValueName
+                ReadSucceeded = $true
                 Exists     = $false
                 Value      = $null
                 ValueType  = $null
                 Path       = "$Hive\$registryPath"
+                Error      = $null
             }
         }
 
@@ -44,10 +46,12 @@ function Get-PadRegistryValue {
                 Scope      = $Hive.ToString()
                 View       = $View.ToString()
                 ValueName  = $ValueName
+                ReadSucceeded = $true
                 Exists     = $false
                 Value      = $null
                 ValueType  = $null
                 Path       = "$Hive\$registryPath"
+                Error      = $null
             }
         }
 
@@ -55,10 +59,12 @@ function Get-PadRegistryValue {
             Scope      = $Hive.ToString()
             View       = $View.ToString()
             ValueName  = $ValueName
+            ReadSucceeded = $true
             Exists     = $true
             Value      = $subKey.GetValue($ValueName)
             ValueType  = $subKey.GetValueKind($ValueName).ToString()
             Path       = "$Hive\$registryPath"
+            Error      = $null
         }
     }
     catch {
@@ -66,6 +72,7 @@ function Get-PadRegistryValue {
             Scope      = $Hive.ToString()
             View       = $View.ToString()
             ValueName  = $ValueName
+            ReadSucceeded = $false
             Exists     = $false
             Value      = $null
             ValueType  = $null
@@ -142,8 +149,30 @@ Write-Host ''
 Write-Host '=== レジストリ設定 ==='
 
 $results |
-    Select-Object Scope, View, ValueName, Exists, Value, ValueType, Path |
+    Select-Object Scope, View, ValueName, ReadSucceeded, Exists, Value, ValueType, Path, Error |
     Format-Table -AutoSize
+
+$readErrors = @(
+    $results | Where-Object { -not $_.ReadSucceeded }
+)
+
+if ($readErrors.Count -gt 0) {
+    Write-Host ''
+    Write-Host '=== 判定結果 ==='
+    Write-Error 'レジストリの読取りに失敗したため、現在の設定を判定できません。' -ErrorAction Continue
+
+    foreach ($readError in $readErrors) {
+        Write-Error (
+            '{0} / {1} / {2}: {3}' -f
+            $readError.Scope,
+            $readError.View,
+            $readError.ValueName,
+            $readError.Error
+        ) -ErrorAction Continue
+    }
+
+    exit 1
+}
 
 $machineSetting = Select-PadRegistryResult -Results @(
     $results | Where-Object {

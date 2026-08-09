@@ -1,274 +1,211 @@
 # Power Automate for desktop 外部実行制御スクリプト
 
-Power Automate for desktop（PAD）のデスクトップ フローを、**実行 URL**または**デスクトップ ショートカット**から起動するときの動作を制御する PowerShell スクリプト集です。
+Power Automate for desktop（PAD）のデスクトップ フローを、**実行URL**または**デスクトップ ショートカット**から起動するときの動作を確認・設定するWindows向けスクリプト集です。
 
-Windows レジストリを変更し、次の設定を切り替えます。
+日本語連番の `.bat` をダブルクリックするだけで実行でき、確認・設定・解除の結果は自動的にログへ保存されます。
 
-- 外部実行時の確認ダイアログを、現在のユーザーだけ非表示にする
-- 現在のユーザーの確認ダイアログ設定を既定状態へ戻す
+> [!WARNING]
+> このツールはWindowsレジストリを変更します。最初に `01_現在の状態を確認.bat` を実行し、現在値を確認してください。組織管理端末では、実行前にシステム管理者へ確認してください。
+
+## できること
+
+- 現在のユーザーだけ、外部実行時の確認ダイアログを非表示にする
+- 現在のユーザー設定を削除し、PADの既定動作へ戻す
 - 確認ダイアログを端末全体で強制表示する
-- 実行 URL／デスクトップ ショートカットからの起動を端末全体で禁止する
+- 実行URL／デスクトップ ショートカットからの起動を端末全体で禁止する
 - ユーザー設定と端末全体の設定を確認する
+- 全操作の結果を日時付きのUTF-8ログとして保存する
 
-## 特徴
+## 動作環境
 
-- PowerShellだけで設定・解除・確認ができる
-- `HKCU` のユーザー設定と `HKLM` の管理者設定を分けて扱う
-- 64ビットOSでは64ビットのレジストリ ビューを明示的に使用する
-- `DialogCheck.ps1` は64ビットOS上で64ビット／32ビットの両方のレジストリ ビューを確認する
-- 管理者権限が必要なスクリプトでは、実行前に権限を確認する
-- `Set-StrictMode`、例外処理、レジストリ ハンドルの解放を実装している
-- 設定後の値を再取得し、変更が反映されたことを確認する
-- 解除スクリプトは対象の値だけを削除し、異なる管理者設定を誤って解除しない
+- Windows 10／11
+- Power Automate for desktop
+- 日本語 `.bat` ランチャー：Windows PowerShell 5.1
+- `.ps1` の直接実行：Windows PowerShell 5.1またはPowerShell 7
 
-## 設定の仕組み
+管理者設定の変更・解除では、WindowsのUAC確認が表示されます。
 
-使用するレジストリ設定は次のとおりです。
+## クイックスタート
+
+1. GitHubのリポジトリ画面で **Code** → **Download ZIP** を選択します。
+2. ダウンロードしたZIPを右クリックして **すべて展開** します。ZIP内から直接実行しないでください。
+3. 展開したファイルの内容を確認します。`.bat`、`RunPadLauncher.ps1`、対象の `.ps1` は同じフォルダに置いたまま使用します。
+4. `01_現在の状態を確認.bat` をダブルクリックします。
+5. 現在値を確認してから、目的に合う番号の `.bat` を実行します。
+6. PADを終了して再起動し、もう一度 `01_現在の状態を確認.bat` で確認します。
+
+> [!TIP]
+> Windowsによってファイルがブロックされた場合は、ZIPファイルの **プロパティ** にある **許可する** を選択してから再展開してください。詳しくは「トラブルシューティング」を参照してください。
+
+## 日本語ランチャー一覧
+
+| ファイル | 権限 | 処理内容 |
+|---|---|---|
+| [`01_現在の状態を確認.bat`](<./01_現在の状態を確認.bat>) | 通常 | `HKCU` と `HKLM` を確認し、最終的な動作を判定する |
+| [`02_ユーザー設定で確認ダイアログを出さない.bat`](<./02_ユーザー設定で確認ダイアログを出さない.bat>) | 通常 | 現在のユーザーの確認ダイアログを非表示にする |
+| [`03_ユーザー設定を解除して既定動作へ戻す.bat`](<./03_ユーザー設定を解除して既定動作へ戻す.bat>) | 通常 | 現在のユーザー設定を削除して既定動作へ戻す |
+| [`04_管理者設定で常に確認を出す.bat`](<./04_管理者設定で常に確認を出す.bat>) | 管理者 | 確認ダイアログを端末全体で強制表示する |
+| [`05_管理者設定の常時確認を解除.bat`](<./05_管理者設定の常時確認を解除.bat>) | 管理者 | 現在値が `1` の場合だけ強制表示設定を解除する |
+| [`06_外部実行禁止の状態を確認.bat`](<./06_外部実行禁止の状態を確認.bat>) | 通常 | 端末全体の外部実行設定だけを確認する |
+| [`07_管理者設定で外部起動を禁止.bat`](<./07_管理者設定で外部起動を禁止.bat>) | 管理者 | 外部からのフロー起動を端末全体で禁止する |
+| [`08_管理者設定の外部起動禁止を解除.bat`](<./08_管理者設定の外部起動禁止を解除.bat>) | 管理者 | 現在値が `2` の場合だけ外部実行禁止を解除する |
+
+各 `.bat` は共通の [`RunPadLauncher.ps1`](RunPadLauncher.ps1) を呼び出します。管理者操作ではUAC昇格を要求し、処理後は結果とログファイルの保存先を表示します。
+
+## 安全な操作手順
+
+設定を変更するときは、必ず次の順序で操作してください。
+
+1. `01_現在の状態を確認.bat` で変更前の値を確認する
+2. 目的に合う設定・解除ランチャーを実行する
+3. PADを終了して再起動する
+4. `01_現在の状態を確認.bat` で変更後の値を確認する
+
+> [!IMPORTANT]
+> `04_管理者設定で常に確認を出す.bat` と `07_管理者設定で外部起動を禁止.bat` は、同じ管理者レジストリ値へそれぞれ `1` と `2` を設定します。実行前に現在値を確認してください。
+
+解除用ランチャーは、目的と異なる管理者設定を誤って削除しないよう保護されています。
+
+| 現在の `ConfigureExternalRuns` | `05_管理者設定の常時確認を解除.bat` | `08_管理者設定の外部起動禁止を解除.bat` |
+|---:|---|---|
+| 未設定 | 変更しない | 変更しない |
+| `1` | 値を削除 | 警告して変更しない |
+| `2` | 警告して変更しない | 値を削除 |
+| その他 | 警告して変更しない | 警告して変更しない |
+
+## レジストリ設定
+
+このツールが読み書きする値は次のとおりです。
 
 | 適用範囲 | レジストリ パス | 値の名前 | 値 | 動作 |
 |---|---|---|---:|---|
 | 現在のユーザー | `HKCU\SOFTWARE\Microsoft\Power Automate Desktop` | `EnableAskBeforeRunningAFlowExternally` | `0` | 確認ダイアログを表示しない |
 | 端末全体 | `HKLM\SOFTWARE\Microsoft\Power Automate Desktop` | `ConfigureExternalRuns` | `1` | 確認ダイアログを常に表示し、ユーザーによる変更を禁止する |
-| 端末全体 | `HKLM\SOFTWARE\Microsoft\Power Automate Desktop` | `ConfigureExternalRuns` | `2` | 実行 URL／デスクトップ ショートカットからのフロー起動を禁止する |
+| 端末全体 | `HKLM\SOFTWARE\Microsoft\Power Automate Desktop` | `ConfigureExternalRuns` | `2` | 実行URL／ショートカットからのフロー起動を禁止する |
 
-`EnableAskBeforeRunningAFlowExternally` について、Microsoft Learnで確認ダイアログを非表示にする値として明示されているのは `0` です。
+`EnableAskBeforeRunningAFlowExternally` について、Microsoft Learnで確認ダイアログを非表示にする値として示されているのは `0` です。そのため、確認ダイアログを再表示するときは `1` を書き込まず、この値を削除してPADの既定動作へ戻します。
 
-そのため、本リポジトリでは確認ダイアログを再表示するときに `1` を設定せず、`EnableAskBeforeRunningAFlowExternally` を削除してPADの既定動作へ戻します。
+### 設定の優先順位
 
-## 設定の優先順位
+端末全体の管理者設定が、現在のユーザーの設定より優先されます。
 
-管理者設定である `HKLM\...\ConfigureExternalRuns` が、ユーザー設定より優先されます。
+1. `ConfigureExternalRuns = 2`：外部実行を禁止
+2. `ConfigureExternalRuns = 1`：確認ダイアログを強制表示
+3. `ConfigureExternalRuns` が未設定：現在のユーザー設定またはPADの既定値に従う
 
-1. `ConfigureExternalRuns = 2`  
-   外部実行そのものが禁止されます。
-2. `ConfigureExternalRuns = 1`  
-   確認ダイアログが強制表示されます。ユーザー側では解除できません。
-3. `ConfigureExternalRuns` が未設定  
-   現在のユーザーの `EnableAskBeforeRunningAFlowExternally` またはPADの既定値に従います。
+`DialogCheck.ps1` は、64ビットOSでは64ビットと32ビットの両方のレジストリ ビューを表示し、64ビット側の明示的な設定を優先して判定します。必要な値を読み取れない場合は「未設定」とせず、判定不能として終了コード `1` を返します。
 
-## ファイル一覧
+## 実行結果ログ
 
-| ファイル | 権限 | 処理内容 |
-|---|---|---|
-| [`DialogCheck.ps1`](DialogCheck.ps1) | 通常 | `HKCU` と `HKLM` の設定を確認し、優先順位を考慮して最終的な動作を判定する |
-| [`DialogOff.ps1`](DialogOff.ps1) | 通常 | `EnableAskBeforeRunningAFlowExternally = 0` を設定し、現在のユーザーの確認ダイアログを非表示にする |
-| [`DialogOn.ps1`](DialogOn.ps1) | 通常 | 現在のユーザーのダイアログ非表示設定を削除して既定状態へ戻し、管理者設定の状態も表示する |
-| [`DialogOnAdmin.ps1`](DialogOnAdmin.ps1) | 管理者 | `ConfigureExternalRuns = 1` を設定し、確認ダイアログを端末全体で強制表示する |
-| [`DialogOffAdmin.ps1`](DialogOffAdmin.ps1) | 管理者 | 現在値が `1` の場合だけ値を削除し、端末全体の確認ダイアログ強制設定を解除する |
-| [`DisableExternalRunsCheck.ps1`](DisableExternalRunsCheck.ps1) | 通常 | `ConfigureExternalRuns` を確認し、未設定／強制表示／外部実行禁止を判定する |
-| [`DisableExternalRunsOn.ps1`](DisableExternalRunsOn.ps1) | 管理者 | `ConfigureExternalRuns = 2` を設定し、外部からのフロー起動を端末全体で禁止する |
-| [`DisableExternalRunsOff.ps1`](DisableExternalRunsOff.ps1) | 管理者 | 現在値が `2` の場合だけ値を削除し、端末全体の外部実行禁止設定を解除する |
+日本語 `.bat` から実行した全操作は、初回実行時に作成される `logs` フォルダへ保存されます。
 
-## 解除スクリプトの保護動作
-
-`DialogOffAdmin.ps1` と `DisableExternalRunsOff.ps1` は、同じレジストリ値 `ConfigureExternalRuns` を扱いますが、削除対象を明確に分けています。
-
-| 現在値 | `DialogOffAdmin.ps1` | `DisableExternalRunsOff.ps1` |
-|---:|---|---|
-| 未設定 | 変更せず終了 | 変更せず終了 |
-| `1` | 値を削除 | 警告を表示し、変更しない |
-| `2` | 警告を表示し、変更しない | 値を削除 |
-| その他 | 警告を表示し、変更しない | 警告を表示し、変更しない |
-
-このため、確認ダイアログの強制表示を解除するときは `DialogOffAdmin.ps1`、外部実行禁止を解除するときは `DisableExternalRunsOff.ps1` を使用してください。
-
-## 動作環境
-
-- Windows
-- Power Automate for desktop
-- Windows PowerShell 5.1 または PowerShell 7
-
-次のスクリプトは、PowerShellを**管理者として実行**する必要があります。
-
-- `DialogOnAdmin.ps1`
-- `DialogOffAdmin.ps1`
-- `DisableExternalRunsOn.ps1`
-- `DisableExternalRunsOff.ps1`
-
-## 使い方
-
-### 1. ファイルを取得する
-
-リポジトリをクローンするか、必要な `.ps1` ファイルをダウンロードします。
-
-```powershell
-git clone <repository-url>
-cd <repository-folder>
+```text
+logs\<ランチャー名>_yyyyMMdd_HHmmss_fff_result.txt
 ```
 
-### 2. 現在の設定を確認する
+ログには次の情報がUTF-8で記録されます。
 
-ユーザー設定と端末全体の設定をまとめて確認します。
+- 開始・終了日時
+- 操作名と対象PowerShell
+- 実行したWindowsユーザー
+- 管理者権限の要否と実行時の権限
+- 標準出力とエラー出力
+- 終了コード
+
+同名ファイルが存在する場合は連番を付け、既存ログを上書きしません。ログの自動削除は行いません。`logs/` は `.gitignore` の対象です。
+
+> [!NOTE]
+> ログにはWindowsユーザー名とレジストリ設定の状態が含まれます。Issueなどへ添付する前に内容を確認してください。
+
+| 終了コード | 意味 |
+|---:|---|
+| `0` | 正常終了 |
+| `1` | 本体エラー、判定不能、UACキャンセル、対象ファイル不在、ログ作成失敗など |
+
+ログを作成できない場合、ランチャーは対象PowerShellを実行せずに終了します。
+
+## PowerShellから直接実行する
+
+自動化や詳細確認が必要な場合は、PowerShell本体を直接実行できます。直接実行では、日本語ランチャーによるログ保存とUAC自動昇格は行われません。
+
+### 現在の設定を確認する
 
 ```powershell
 .\DialogCheck.ps1
 ```
 
-端末全体の `ConfigureExternalRuns` だけを簡易確認する場合は、次を実行します。
+端末全体の `ConfigureExternalRuns` だけを確認する場合：
 
 ```powershell
 .\DisableExternalRunsCheck.ps1
 ```
 
-### 3. 現在のユーザーの確認ダイアログを非表示にする
+### 現在のユーザー設定を変更する
+
+確認ダイアログを非表示にする：
 
 ```powershell
 .\DialogOff.ps1
 ```
 
-この設定は、スクリプトを実行したWindowsユーザーにだけ適用されます。
-
-設定内容：
-
-```text
-HKCU\SOFTWARE\Microsoft\Power Automate Desktop
-EnableAskBeforeRunningAFlowExternally = 0
-```
-
-### 4. 現在のユーザーの確認ダイアログを既定状態へ戻す
+ユーザー設定を削除して既定動作へ戻す：
 
 ```powershell
 .\DialogOn.ps1
 ```
 
-`EnableAskBeforeRunningAFlowExternally` を削除し、PADの既定動作へ戻します。
+この2つは `HKCU` を操作するため、実行したWindowsユーザーだけが対象です。
 
-実行後、`ConfigureExternalRuns` の状態も確認し、次のいずれかを表示します。
+### 端末全体の設定を変更する
 
-- 管理者設定によって確認ダイアログが強制されている
-- 管理者設定によって外部実行が禁止されている
-- 端末全体の管理者設定は存在しない
-
-### 5. 確認ダイアログを端末全体で強制表示する
-
-管理者としてPowerShellを開いて実行します。
+次のコマンドは、管理者として開いたPowerShellで実行してください。
 
 ```powershell
+# 確認ダイアログを強制表示
 .\DialogOnAdmin.ps1
-```
 
-設定内容：
-
-```text
-HKLM\SOFTWARE\Microsoft\Power Automate Desktop
-ConfigureExternalRuns = 1
-```
-
-解除する場合は、管理者として次を実行します。
-
-```powershell
+# 強制表示を解除（現在値が1の場合だけ削除）
 .\DialogOffAdmin.ps1
-```
 
-`DialogOffAdmin.ps1` は、現在値が `1` の場合だけ削除します。現在値が `2` の場合は変更せず、`DisableExternalRunsOff.ps1` の使用を案内します。
-
-### 6. 外部実行を端末全体で禁止する
-
-管理者としてPowerShellを開いて実行します。
-
-```powershell
+# 外部実行を禁止
 .\DisableExternalRunsOn.ps1
-```
 
-設定内容：
-
-```text
-HKLM\SOFTWARE\Microsoft\Power Automate Desktop
-ConfigureExternalRuns = 2
-```
-
-解除する場合は、管理者として次を実行します。
-
-```powershell
+# 外部実行禁止を解除（現在値が2の場合だけ削除）
 .\DisableExternalRunsOff.ps1
 ```
 
-`DisableExternalRunsOff.ps1` は、現在値が `2` の場合だけ削除します。現在値が `1` の場合は変更せず、`DialogOffAdmin.ps1` の使用を案内します。
+## トラブルシューティング
 
-## 使用例
+### ダウンロードしたファイルを実行できない
 
-### 現在のユーザーだけ確認ダイアログを非表示にする
+最初にスクリプトの内容を確認してください。ZIPファイルの **プロパティ** に **許可する** が表示される場合は、チェックを付けてから再展開します。
 
-```powershell
-.\DialogCheck.ps1
-.\DialogOff.ps1
-.\DialogCheck.ps1
-```
-
-### 確認ダイアログを端末全体で強制表示する
+展開後のファイルを個別に許可する場合は、対象フォルダでPowerShellを開いて次を実行します。
 
 ```powershell
-# 管理者として実行
-.\DialogCheck.ps1
-.\DialogOnAdmin.ps1
-.\DialogCheck.ps1
+Get-ChildItem -File | Unblock-File
 ```
 
-### 端末全体の強制表示を解除する
-
-```powershell
-# 管理者として実行
-.\DialogCheck.ps1
-.\DialogOffAdmin.ps1
-.\DialogCheck.ps1
-```
-
-### 外部実行を端末全体で禁止する
-
-```powershell
-# 管理者として実行
-.\DisableExternalRunsCheck.ps1
-.\DisableExternalRunsOn.ps1
-.\DisableExternalRunsCheck.ps1
-```
-
-### 端末全体の外部実行禁止を解除する
-
-```powershell
-# 管理者として実行
-.\DisableExternalRunsCheck.ps1
-.\DisableExternalRunsOff.ps1
-.\DisableExternalRunsCheck.ps1
-```
-
-## 推奨する操作手順
-
-設定を変更するときは、変更前後に現在値を確認してください。
-
-```powershell
-# 変更前
-.\DialogCheck.ps1
-
-# 目的に合うスクリプトを実行
-.\DialogOff.ps1
-
-# 変更後
-.\DialogCheck.ps1
-```
-
-管理者設定を解除するときは、現在の `ConfigureExternalRuns` の値に応じてスクリプトを選びます。
-
-```text
-ConfigureExternalRuns = 1 → DialogOffAdmin.ps1
-ConfigureExternalRuns = 2 → DisableExternalRunsOff.ps1
-```
-
-## 実行ポリシーでブロックされる場合
-
-最初にスクリプトの内容を確認してください。そのうえで、現在のPowerShellプロセスだけ実行ポリシーを変更して実行できます。
+PowerShell本体を直接実行するときだけ、一時的に実行ポリシーを変更する方法もあります。
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\DialogCheck.ps1
 ```
 
-PowerShellを閉じると、`Process` スコープの変更は失われます。
+PowerShellを閉じると、`Process` スコープの変更は失われます。日本語 `.bat` は対象プロセスに限って `Bypass` を指定し、端末全体の実行ポリシーは変更しません。
 
-## 設定後の確認
+### UACをキャンセルした
 
-設定変更後は、Power Automate for desktopを終了してから再起動してください。
+管理者操作は実行されず、レジストリも変更されません。該当ログに終了コード `1` と失敗内容が記録されます。必要な場合は同じ `.bat` を再実行し、UACを承認してください。
 
-確認対象は、PADコンソールの次の設定です。
+### `Run PowerShell as Administrator.` と表示される
+
+管理者用 `.ps1` を通常権限のPowerShellから直接実行しています。PowerShellを **管理者として実行** してください。日本語 `.bat` を使う場合はUACが自動的に表示されます。
+
+### 設定を変えてもPADの動作が変わらない
+
+PADを完全に終了して再起動してください。その後、PADコンソールの次の項目と `01_現在の状態を確認.bat` の結果を確認します。
 
 ```text
 設定
@@ -276,88 +213,47 @@ PowerShellを閉じると、`Process` スコープの変更は失われます。
    └─ フローを外部から呼び出すときに確認ダイアログを表示する
 ```
 
-## `DialogCheck.ps1` の判定内容
+### ユーザー設定で確認ダイアログを消せない
 
-`DialogCheck.ps1` は、64ビットOSでは64ビットと32ビットの両方のレジストリ ビューを確認し、64ビット側の明示的な設定を優先して判定します。
+`ConfigureExternalRuns = 1` によって端末全体で強制表示されている可能性があります。ユーザー設定では解除できません。`01_現在の状態を確認.bat` で確認してください。
 
-判定順序は次のとおりです。
+### 実行URLやショートカットから起動できない
 
-1. `HKLM` の `ConfigureExternalRuns = 1` または `2`
-2. `HKCU` の `EnableAskBeforeRunningAFlowExternally`
-3. レジストリに明示されていない場合はPADの設定画面または既定値
+`ConfigureExternalRuns = 2` によって外部実行が禁止されている可能性があります。`06_外部実行禁止の状態を確認.bat` で確認してください。
 
-`EnableAskBeforeRunningAFlowExternally = 1` が見つかった場合は、確認ダイアログが有効である可能性を表示します。ただし、Microsoft Learnでは `0` の動作が明示されているため、実際のPAD設定画面でも確認するよう警告します。
+### 解除ランチャーを実行しても値が削除されない
 
-## トラブルシューティング
-
-### `Run PowerShell as Administrator.` と表示される
-
-管理者設定を変更するスクリプトを、通常権限のPowerShellで実行しています。PowerShellを右クリックし、**管理者として実行**してください。
-
-### `DialogOff.ps1` を実行しても確認ダイアログが表示される
-
-`HKLM` の `ConfigureExternalRuns = 1` が設定されている可能性があります。
-
-```powershell
-.\DialogCheck.ps1
-```
-
-管理者設定が強制されている場合、ユーザー設定では変更できません。
-
-### 実行 URLやショートカットからフローを起動できない
-
-`HKLM` の `ConfigureExternalRuns = 2` が設定されている可能性があります。
-
-```powershell
-.\DisableExternalRunsCheck.ps1
-```
-
-解除する場合は、管理者として次を実行します。
-
-```powershell
-.\DisableExternalRunsOff.ps1
-```
-
-### 解除スクリプトを実行しても値が削除されない
-
-解除対象と現在値が一致していない場合、スクリプトは安全のため値を削除しません。
+解除対象と現在値が一致していない場合、安全のため値を削除しません。
 
 ```text
-現在値が1 → DialogOffAdmin.ps1
-現在値が2 → DisableExternalRunsOff.ps1
+現在値が1 → 05_管理者設定の常時確認を解除.bat
+現在値が2 → 08_管理者設定の外部起動禁止を解除.bat
 ```
 
-現在値は次のスクリプトで確認できます。
+### 別のユーザーに設定が反映されない
 
-```powershell
-.\DialogCheck.ps1
-```
-
-### 別のユーザーでは設定が反映されない
-
-`DialogOff.ps1` と `DialogOn.ps1` は `HKCU` を変更するため、実行したWindowsユーザーだけが対象です。ユーザーごとに設定してください。
+`02` と `03` は現在のユーザーの `HKCU` を操作します。別のWindowsユーザーへは反映されないため、ユーザーごとに設定してください。
 
 ### 32ビット側に古い値が残っている
 
-`DialogCheck.ps1` は、64ビットOSでは64ビット／32ビットの両方を一覧表示します。ただし、設定・解除用スクリプトは64ビットOSでは64ビットのレジストリ ビューを操作します。
-
-過去に32ビットPowerShellや別の方法で設定した値が残っている場合は、一覧表示されたパスとビューを確認してください。
+設定・解除用スクリプトは、64ビットOSでは64ビットのレジストリ ビューを操作します。過去に32ビットPowerShellなどで設定した値が残っている場合は、`DialogCheck.ps1` が表示するビューとパスを確認してください。
 
 ## セキュリティ上の注意
 
-確認ダイアログを無効にすると、実行 URLやショートカットを開いた際に、ユーザーの追加確認なしでデスクトップ フローが実行される可能性があります。
+確認ダイアログを非表示にすると、実行URLやショートカットを開いた際に、追加確認なしでデスクトップ フローが実行される可能性があります。
 
-- 信頼できないリンクやショートカットを開かないでください。
+- 実行前に `.bat` と `.ps1` の内容を確認してください。
+- 信頼できない実行URLやショートカットを開かないでください。
 - 共有されたフローの作成者と処理内容を確認してください。
 - 組織端末では、管理者による強制表示または外部実行禁止を検討してください。
-- レジストリを変更する前に、必要に応じてバックアップを取得してください。
+- レジストリ変更前に、必要に応じて現在値やレジストリをバックアップしてください。
 
-本スクリプトの利用によって発生した問題については、利用者の責任で対応してください。
+本ツールはMicrosoftの公式製品ではなく、Microsoftによるサポートや保証の対象ではありません。本ツールの利用によって発生した問題について、利用者自身の責任で対応してください。
 
 ## 参考資料
 
-- [URL またはデスクトップ ショートカットでデスクトップ フローを実行する - Microsoft Learn](https://learn.microsoft.com/ja-jp/power-automate/desktop-flows/run-desktop-flows-url-shortcuts)
-- [デスクトップ用 Power Automate のガバナンス - Microsoft Learn](https://learn.microsoft.com/ja-jp/power-automate/desktop-flows/governance)
+- [URLまたはデスクトップ ショートカットでデスクトップ フローを実行する - Microsoft Learn](https://learn.microsoft.com/ja-jp/power-automate/desktop-flows/run-desktop-flows-url-shortcuts)
+- [デスクトップ用Power Automateのガバナンス - Microsoft Learn](https://learn.microsoft.com/ja-jp/power-automate/desktop-flows/governance)
 
 ## Author
 
